@@ -36,8 +36,13 @@ _start:
     /* Set up the stack pointer */
     mov $stack_top, %esp
 
-    /* Call the global function 'kernel_main' from your C code. */
+    /* GRUB provides:
+       EAX = Multiboot magic value
+       EBX = pointer to Multiboot information */
+    push %ebx
+    push %eax
     call kernel_main
+    add $8, %esp
 
     /* 
     If the system has nothing more to do, put the computer into an 

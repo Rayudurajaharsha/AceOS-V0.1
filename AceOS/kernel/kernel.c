@@ -4,6 +4,7 @@
 #include "gdt.h"
 #include "idt.h"
 #include "keyboard.h"
+#include "multiboot.h"
 
 extern void timer_init(uint32_t frequency);
 
@@ -160,10 +161,31 @@ void execute_command(char* input) {
 }
 
 /* --- STEP 6: Kernel Entry Point --- */
-void kernel_main(void) {
+void kernel_main(
+    uint32_t multiboot_magic,
+    const multiboot_info_t* multiboot_info
+){
     gdt_init();
+    terminal_initialize();
     idt_init();
     keyboard_init();
+    
+    /* Check if the Multiboot magic is valid */
+    if (multiboot_magic != MULTIBOOT_BOOTLOADER_MAGIC) {
+        terminal_writestring("ERROR: Invalid Multiboot magic.\n");
+        while (1) {
+            asm volatile("hlt");
+        }
+    }
+
+    terminal_writestring("Multiboot information received.\n");
+
+    if (multiboot_info->flags & MULTIBOOT_INFO_FLAG_MMAP) {
+        terminal_writestring("Memory map is available.\n");
+    } else {
+        terminal_writestring("WARNING: No memory map supplied.\n");
+    }
+
     
     /* Initialize the timer at 100 Hz */
     timer_init(100);
@@ -174,7 +196,6 @@ void kernel_main(void) {
     /* Enable Hardware Interrupts */
     asm volatile("sti");
 
-    terminal_initialize();
     terminal_writestring("AI-Quantum OS Kernel Online.\n");
     terminal_writestring("System Clock Initialized (100Hz).\n");
     terminal_writestring("Type 'help' to see available commands.\n\n> ");
