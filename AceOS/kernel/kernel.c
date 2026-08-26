@@ -134,6 +134,61 @@ void terminal_writestring(const char* data) {
     }
 }
 
+static void terminal_write_hex64(uint64_t value) {
+    static const char hex[] = "0123456789ABCDEF";
+
+    terminal_writestring("0x");
+
+    for (int shift = 60; shift >= 0; shift -= 4) {
+        terminal_putchar(hex[(value >> shift) & 0xF]);
+    }
+}
+
+static const char* multiboot_region_type(uint32_t type) {
+    switch (type) {
+        case 1: return "Available";
+        case 2: return "Reserved";
+        case 3: return "ACPI reclaimable";
+        case 4: return "ACPI NVS";
+        case 5: return "Bad RAM";
+        default: return "Unknown";
+    }
+}
+
+static void print_memory_map(const multiboot_info_t* multiboot_info) {
+    uint32_t current = multiboot_info->mmap_addr;
+    uint32_t end = current + multiboot_info->mmap_length;
+
+    terminal_writestring("\nMemory map:\n");
+
+    while (current < end) {
+        const multiboot_mmap_entry_t* entry =
+            (const multiboot_mmap_entry_t*)(uintptr_t)current;
+
+        if (entry->size < 20) {
+            terminal_writestring("Invalid memory-map entry.\n");
+            break;
+        }
+
+        terminal_writestring("  ");
+        terminal_write_hex64(entry->addr);
+        terminal_writestring(" + ");
+        terminal_write_hex64(entry->len);
+        terminal_writestring("  ");
+        terminal_writestring(multiboot_region_type(entry->type));
+        terminal_putchar('\n');
+
+        uint32_t next = current + entry->size + sizeof(entry->size);
+
+        if (next <= current) {
+            terminal_writestring("Memory-map overflow.\n");
+            break;
+        }
+
+        current = next;
+    }
+}
+
 /* --- Command Execution Engine --- */
 void execute_command(char* input) {
     if (input[0] == '\0') {
@@ -169,7 +224,8 @@ void kernel_main(
     terminal_initialize();
     idt_init();
     keyboard_init();
-    
+    terminal_writestring("AI-Quantum OS Kernel Online.\n");
+    terminal_writestring("System Clock Initialized (100Hz).\n");
     /* Check if the Multiboot magic is valid */
     if (multiboot_magic != MULTIBOOT_BOOTLOADER_MAGIC) {
         terminal_writestring("ERROR: Invalid Multiboot magic.\n");
@@ -182,6 +238,7 @@ void kernel_main(
 
     if (multiboot_info->flags & MULTIBOOT_INFO_FLAG_MMAP) {
         terminal_writestring("Memory map is available.\n");
+        print_memory_map(multiboot_info);
     } else {
         terminal_writestring("WARNING: No memory map supplied.\n");
     }
@@ -196,8 +253,8 @@ void kernel_main(
     /* Enable Hardware Interrupts */
     asm volatile("sti");
 
-    terminal_writestring("AI-Quantum OS Kernel Online.\n");
-    terminal_writestring("System Clock Initialized (100Hz).\n");
+    
+    
     terminal_writestring("Type 'help' to see available commands.\n\n> ");
 
     while (1) {
