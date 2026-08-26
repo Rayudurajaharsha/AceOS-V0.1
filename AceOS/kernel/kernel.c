@@ -5,6 +5,7 @@
 #include "idt.h"
 #include "keyboard.h"
 #include "multiboot.h"
+#include "pmm.h"
 
 extern void timer_init(uint32_t frequency);
 
@@ -144,6 +145,26 @@ static void terminal_write_hex64(uint64_t value) {
     }
 }
 
+static void terminal_write_uint32(uint32_t value) {
+    char digits[10];
+    size_t count = 0;
+
+    if (value == 0) {
+        terminal_putchar('0');
+        return;
+    }
+
+    while (value > 0) {
+        digits[count++] = (char)('0' + (value % 10u));
+        value /= 10u;
+    }
+
+    while (count > 0) {
+        terminal_putchar(digits[--count]);
+    }
+}
+
+
 static const char* multiboot_region_type(uint32_t type) {
     switch (type) {
         case 1: return "Available";
@@ -239,6 +260,24 @@ void kernel_main(
     if (multiboot_info->flags & MULTIBOOT_INFO_FLAG_MMAP) {
         terminal_writestring("Memory map is available.\n");
         print_memory_map(multiboot_info);
+        pmm_init(multiboot_info);
+
+        terminal_writestring("PMM initialized. Free 4 KiB pages: ");
+        terminal_write_uint32(pmm_free_page_count());
+        terminal_putchar('\n');
+
+        uint32_t test_page = pmm_alloc_page();
+
+        if (test_page == 0) {
+            terminal_writestring("PMM allocation test failed.\n");
+        } else {
+            terminal_writestring("PMM allocated test page: ");
+            terminal_write_hex64(test_page);
+            terminal_putchar('\n');
+
+            pmm_free_page(test_page);
+            terminal_writestring("PMM returned test page.\n");
+        }
     } else {
         terminal_writestring("WARNING: No memory map supplied.\n");
     }

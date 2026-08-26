@@ -1,41 +1,59 @@
-CC = i686-elf-gcc
-AS = i686-elf-as
-CFLAGS = -std=gnu99 -ffreestanding -O2 -Wall -Wextra
+CC := i686-elf-gcc
+AS := i686-elf-as
 
-all: myos.bin
+ROOT := AceOS
+BUILD := build
 
-boot.o: boot.s
-	$(AS) boot.s -o boot.o
+.RECIPEPREFIX := >
 
-gdt_flush.o: gdt_flush.s
-	$(AS) gdt_flush.s -o gdt_flush.o
+CFLAGS := -std=gnu99 -ffreestanding -O2 -Wall -Wextra \
+  -I$(ROOT)/boot \
+  -I$(ROOT)/kernel/arch/i386/gdt \
+  -I$(ROOT)/kernel/arch/i386/idt \
+  -I$(ROOT)/kernel/arch/i386/io \
+  -I$(ROOT)/kernel/drivers/keyboard \
+  -I$(ROOT)/kernel/drivers/timer \
+  -I$(ROOT)/kernel/drivers/vga \
+  -I$(ROOT)/kernel/memory/pmm
 
-idt_flush.o: idt_flush.s
-	$(AS) idt_flush.s -o idt_flush.o
+C_SOURCES := \
+  $(ROOT)/kernel/kernel.c \
+  $(ROOT)/kernel/arch/i386/gdt/gdt.c \
+  $(ROOT)/kernel/arch/i386/idt/idt.c \
+  $(ROOT)/kernel/drivers/keyboard/keyboard.c \
+  $(ROOT)/kernel/drivers/timer/timer.c \
+  $(ROOT)/kernel/memory/pmm/pmm.c
 
-interrupt_stubs.o: interrupt_stubs.s
-	$(AS) interrupt_stubs.s -o interrupt_stubs.o
+ASM_SOURCES := \
+  $(ROOT)/boot/boot.s \
+  $(ROOT)/kernel/arch/i386/gdt/gdt_flush.s \
+  $(ROOT)/kernel/arch/i386/idt/idt_flush.s \
+  $(ROOT)/kernel/arch/i386/interrupt/interrupt_stubs.s
 
-gdt.o: gdt.c
-	$(CC) -c gdt.c -o gdt.o $(CFLAGS)
+C_OBJECTS := $(C_SOURCES:$(ROOT)/%.c=$(BUILD)/%.o)
+ASM_OBJECTS := $(ASM_SOURCES:$(ROOT)/%.s=$(BUILD)/%.o)
+OBJECTS := $(C_OBJECTS) $(ASM_OBJECTS)
 
-idt.o: idt.c
-	$(CC) -c idt.c -o idt.o $(CFLAGS)
+KERNEL := $(BUILD)/myos.bin
 
-keyboard.o: keyboard.c
-	$(CC) -c keyboard.c -o keyboard.o $(CFLAGS)
+all: $(KERNEL)
 
-timer.o: timer.c
-	$(CC) -c timer.c -o timer.o $(CFLAGS)
+$(BUILD)/%.o: $(ROOT)/%.c
+>@mkdir -p $(dir $@)
+>$(CC) $(CFLAGS) -c $< -o $@
 
-kernel.o: kernel.c
-	$(CC) -c kernel.c -o kernel.o $(CFLAGS)
+$(BUILD)/%.o: $(ROOT)/%.s
+>@mkdir -p $(dir $@)
+>$(AS) $< -o $@
 
-myos.bin: boot.o gdt_flush.o gdt.o idt_flush.o idt.o interrupt_stubs.o keyboard.o timer.o kernel.o linker.ld
-	$(CC) -T linker.ld -o myos.bin -ffreestanding -O2 -nostdlib boot.o gdt_flush.o gdt.o idt_flush.o idt.o interrupt_stubs.o keyboard.o timer.o kernel.o -lgcc
+$(KERNEL): $(OBJECTS) $(ROOT)/boot/linker.ld
+>$(CC) -T $(ROOT)/boot/linker.ld -o $@ \
+>  -ffreestanding -O2 -nostdlib $(OBJECTS) -lgcc
 
-run: myos.bin
-	qemu-system-i386 -kernel myos.bin -no-reboot -d cpu_reset
+run: $(KERNEL)
+>qemu-system-i386 -kernel $(KERNEL) -no-reboot -display gtk
 
 clean:
-	rm -f *.o myos.bin
+>rm -rf $(BUILD)
+
+.PHONY: all run clean
